@@ -1,0 +1,37 @@
+[package]
+name = "fogltlogles-rs"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+libc = "0.2"
+linkme = "0.3"
+paste = "1.0"
+
+log = "0.4"
+android_logger = "0.15"
+# android-activity = { version = "0.6", features = ["game-activity"] }
+
+shaderc = { version = "0.10", default-features = false, features = ["prefer-static-linking"] }
+spirv-cross2 = { version = "0.7", default-features = false, features = ["glsl"] }
+
+glam = { version = "0.33", features = ["fast-math"] }
+
+[build-dependencies]
+khronos_api = "3.1"
+gl_generator = "0.14"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[profile.dev]
+opt-level = 0
+debug = true
+
