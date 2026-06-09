@@ -1,8 +1,8 @@
 use std::ffi;
 
-use crate::register_intercept;
+use crate::{core::context::FogleContext, register_ov};
 
-register_intercept! {
+register_ov! {
     fn glTexImage2D(
         target: u32,
         level: i32,
@@ -13,8 +13,10 @@ register_intercept! {
         format: u32,
         type_: u32,
         pixels: *const ffi::c_void,
-    ) => |ctx: &FogleContext| {
-        ctx.api.TexImage2D(
+    ) => |ctx: Option<&'_ FogleContext>| {
+        let ctx = ctx.expect("Context uninitialized!");
+
+        ctx.gles.TexImage2D(
             target, level, internalformat,
             width, height,
             border, format, type_,

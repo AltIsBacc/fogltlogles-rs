@@ -1,5 +1,7 @@
 use std::{ffi, ptr};
 
+pub mod loaders;
+
 pub struct InterceptEntry {
     pub name: &'static str,
     pub ptr: *const ffi::c_void,
@@ -11,37 +13,62 @@ unsafe impl Sync for InterceptEntry {}
 pub static INTERCEPT_REGISTRY: [InterceptEntry];
 
 #[macro_export]
-macro_rules! register_intercept {
+macro_rules! register_func {
     (fn $func_name:ident ( $( $arg_name:ident : $arg_type:ty ),* $(,)? ) $( -> $ret_type:ty )? => $body:expr) => {
-        use $crate::core::context::FogleContext;
-
-        #[allow(non_snake_case)]
-        #[allow(unsafe_op_in_unsafe_fn)]
-        pub unsafe extern "C" fn $func_name( $( $arg_name : $arg_type ),* ) $( -> $ret_type )? {
-            let ctx_ptr = $crate::core::context::get_global_context_raw();
-            
-            if ctx_ptr.is_null() {
-                #[cfg(debug_assertions)]
-                eprintln!(concat!("FOGLTLOGLES: Context uninitialized when calling ", stringify!($func_name)));
-
-                #[cfg(not(debug_assertions))]
-                panic!(concat!("FOGLTLOGLES: Context uninitialized when calling ", stringify!($func_name)));
-            } else {
-                // Safety: Context pointer is checked for null and safely managed globally.
-                let ctx = unsafe { &*ctx_ptr };
-
-                let closure = $body;
-                closure(ctx)
-            }
-        }
-
         paste::paste! {
             #[allow(non_snake_case)]
-            mod [<$func_name _intercept>] {
+            #[allow(unsafe_op_in_unsafe_fn)]
+            pub unsafe extern "C" fn $func_name( $( $arg_name : $arg_type ),* ) $( -> $ret_type )? {
+                let closure = $body;
+                closure($crate::core::context::get_global_context())
+            }
+
+            #[allow(non_snake_case)]
+            mod [<$func_name _entry>] {
                 #[linkme::distributed_slice($crate::api::INTERCEPT_REGISTRY)]
                 static __INTERCEPT_ENTRY: $crate::api::InterceptEntry = $crate::api::InterceptEntry {
                     name: stringify!($func_name),
                     ptr: super::$func_name as *const std::ffi::c_void,
+                };
+            }
+        }
+    };
+}
+
+
+#[macro_export]
+macro_rules! register_ov {
+    (fn $func_name:ident ( $( $arg_name:ident : $arg_type:ty ),* $(,)? ) $( -> $ret_type:ty )? => $body:expr) => {
+        paste::paste! {
+            #[allow(non_snake_case)]
+            #[allow(unsafe_op_in_unsafe_fn)]
+            pub unsafe extern "C" fn [<ov_ $func_name>]( $( $arg_name : $arg_type ),* ) $( -> $ret_type )? {
+                let closure = $body;
+                closure($crate::core::context::get_global_context())
+            }
+
+            #[allow(non_snake_case)]
+            mod [<$func_name _ov_entry>] {
+                #[linkme::distributed_slice($crate::api::INTERCEPT_REGISTRY)]
+                static __INTERCEPT_ENTRY: $crate::api::InterceptEntry = $crate::api::InterceptEntry {
+                    name: stringify!($func_name),
+                    ptr: super::[<ov_ $func_name>] as *const std::ffi::c_void,
+                };
+            }
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! register_redir {
+    ($name:ident => $target:ident) => {
+        paste::paste! {
+            #[allow(non_snake_case)]
+            mod [<$name _redir_entry>] {
+                #[linkme::distributed_slice($crate::api::INTERCEPT_REGISTRY)]
+                static __INTERCEPT_ENTRY: $crate::api::InterceptEntry = $crate::api::InterceptEntry {
+                    name: stringify!($name),
+                    ptr: super::$target as *const std::ffi::c_void,
                 };
             }
         }
@@ -62,6 +89,10 @@ pub fn get_proc_address(name: *const ffi::c_char) -> *const ffi::c_void {
         }
     }
 
+    get_proc_address_passthrough(name)
+}
+
+pub fn get_proc_address_passthrough(name: *const ffi::c_char) -> *const ffi::c_void {
     unsafe { libc::dlsym(RTLD_NEXT, name) }
 }
 
