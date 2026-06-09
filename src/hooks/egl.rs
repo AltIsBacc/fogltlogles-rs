@@ -1,10 +1,10 @@
-use crate::{bindings::backend::egl, core::context, register_export};
+use crate::{bindings::backend::egl, core::context, register_export, register_func};
 
 #[macro_export]
 macro_rules! register_egl_passthrough {
     // zero-arg variant
     ($func_name:ident () $( -> $ret_type:ty )? , $method:ident) => {
-        $crate::register_export!(
+        $crate::register_func!(
             fn $func_name() $( -> $ret_type )? => |_ctx| {
                 crate::init();
                 let ctx = $crate::core::context::get_global_context()
@@ -15,7 +15,7 @@ macro_rules! register_egl_passthrough {
     };
     // one-or-more-arg variant
     ($func_name:ident ( $( $arg_name:ident : $arg_type:ty ),+ $(,)? ) $( -> $ret_type:ty )? , $method:ident) => {
-        $crate::register_export!(
+        $crate::register_func!(
             fn $func_name( $( $arg_name : $arg_type ),+ ) $( -> $ret_type )? => |_ctx| {
                 crate::init();
                 let ctx = $crate::core::context::get_global_context()
@@ -26,7 +26,7 @@ macro_rules! register_egl_passthrough {
     };
 }
 
-register_export!(
+register_func!(
     fn eglMakeCurrent(
         dpy: egl::types::EGLDisplay,
         draw: egl::types::EGLSurface,
@@ -37,8 +37,9 @@ register_export!(
         let ctx = context::get_global_context()
             .expect("Context not initialized");
         let result = unsafe { ctx.egl.MakeCurrent(dpy, draw, read, ctxx) };
+        log::info!("eglMakeCurrent result={} err=0x{:x}", result, unsafe { ctx.egl.GetError() });
 
-        crate::main();
+        if result != 0 { crate::main(); }
         result
     }
 );

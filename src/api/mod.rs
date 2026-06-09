@@ -19,7 +19,7 @@ static EGL_GET_PROC: atomic::AtomicPtr<ffi::c_void> = atomic::AtomicPtr::new(ptr
 fn open_lib(cell: &atomic::AtomicPtr<ffi::c_void>, name: &ffi::CStr) -> *mut ffi::c_void {
     let mut handle = cell.load(atomic::Ordering::Relaxed);
     if handle.is_null() {
-        handle = unsafe { libc::dlopen(name.as_ptr(), libc::RTLD_NOW | libc::RTLD_GLOBAL) };
+        handle = unsafe { libc::dlopen(name.as_ptr(), libc::RTLD_LAZY | libc::RTLD_LOCAL) };
         cell.store(handle, atomic::Ordering::Relaxed);
     }
     handle
@@ -52,6 +52,7 @@ fn intercept_lookup(name: *const ffi::c_char) -> *const ffi::c_void {
     if let Ok(s) = c_str.to_str() {
         for entry in INTERCEPT_REGISTRY.iter() {
             if entry.name == s {
+                log::info!("Intercepted : {}", s);
                 return entry.ptr;
             }
         }
@@ -75,6 +76,7 @@ pub fn egl_get_proc_address(name: *const ffi::c_char) -> *const ffi::c_void {
         if let Some(f) = get_egl_get_proc() {
             let ptr = f(name);
             if !ptr.is_null() { return ptr; }
+            log::error!("Failed to load {}", ffi::CStr::from_ptr(name).to_str().unwrap());
         }
 
         libc::dlsym(egl_handle(), name)

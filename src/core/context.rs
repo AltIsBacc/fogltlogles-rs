@@ -19,7 +19,12 @@ impl FogleContext {
     fn load_gles() -> gles2::Gles2 {
         let loader = |name| {
             let cname = ffi::CString::new(name).unwrap();
-            api::egl_get_proc_address(cname.as_ptr())
+            let ptr = api::fogle_get_proc_address(cname.as_ptr());
+            if ptr.is_null() {
+                log::error!("Failed to load GLES function named : {}", name);
+            }
+
+            ptr
         };
 
         gles2::Gles2::load_with(loader)
@@ -27,8 +32,15 @@ impl FogleContext {
 
     fn load_egl() -> egl::Egl {
         let loader = |name| {
+            log::info!("Loading EGL Func : {}", name);
             let cname = ffi::CString::new(name).unwrap();
-            api::egl_get_proc_address(cname.as_ptr())
+            
+            let ptr  = api::egl_get_proc_address(cname.as_ptr());
+            if ptr.is_null() {
+                log::error!("Failed to load EGL function named : {}", name);
+            }
+
+            ptr
         };
 
         egl::Egl::load_with(loader)

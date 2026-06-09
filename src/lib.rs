@@ -36,10 +36,17 @@ pub fn main() {
     let ctx = context::get_global_context().unwrap();
 
     let version_str = unsafe {
+        log::info!("Calling GetString...");
         let ptr = ctx.gles.GetString(backend::gles2::VERSION);
+        log::info!("GetString returned: {:?}", ptr);
+        
         if ptr.is_null() {
+            let err = ctx.gles.GetError();
+            log::error!("eglGetError: 0x{:x}", err);
+
             panic!("FOGLTLOGLES: Failed to get OpenGL ES version string!");
         }
+
         std::ffi::CStr::from_ptr(ptr as *const std::ffi::c_char)
             .to_str()
             .expect("Invalid version string!")
