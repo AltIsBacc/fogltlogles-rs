@@ -35,7 +35,7 @@ pub fn init() {
 pub fn main() {
     let ctx = context::get_global_context().unwrap();
 
-    let version_str = unsafe {
+    /* let version_str = unsafe {
         log::info!("Calling GetString...");
         let ptr = ctx.gles.GetString(backend::gles2::VERSION);
         log::info!("GetString returned: {:?}", ptr);
@@ -52,7 +52,7 @@ pub fn main() {
             .expect("Invalid version string!")
     };
 
-    log::info!("GL_VERSION: {}", version_str);
+    log::info!("GL_VERSION: {}", version_str); */
 
     let mut major = 0i32;
     let mut minor = 0i32;

@@ -1,7 +1,9 @@
-use std::{ffi, ptr, sync::atomic};
+use std::{ffi, ptr, sync::OnceLock};
 
 pub mod macros;
 pub mod loaders;
+
+use libloading::os::unix::{Library, RTLD_LAZY, RTLD_LOCAL};
 
 pub struct InterceptEntry {
     pub name: &'static str,
@@ -13,46 +15,50 @@ unsafe impl Sync for InterceptEntry {}
 #[linkme::distributed_slice]
 pub static INTERCEPT_REGISTRY: [InterceptEntry];
 
-static EGL_HANDLE: atomic::AtomicPtr<ffi::c_void> = atomic::AtomicPtr::new(ptr::null_mut());
-static EGL_GET_PROC: atomic::AtomicPtr<ffi::c_void> = atomic::AtomicPtr::new(ptr::null_mut());
+static EGL_LIB: OnceLock<Library> = OnceLock::new();
+static EGL_GET_PROC: OnceLock<
+    unsafe extern "C" fn(*const ffi::c_char) -> *const ffi::c_void
+> = OnceLock::new();
 
-fn open_lib(cell: &atomic::AtomicPtr<ffi::c_void>, name: &ffi::CStr) -> *mut ffi::c_void {
-    let mut handle = cell.load(atomic::Ordering::Relaxed);
-    if handle.is_null() {
-        handle = unsafe { libc::dlopen(name.as_ptr(), libc::RTLD_LAZY | libc::RTLD_LOCAL) };
-        cell.store(handle, atomic::Ordering::Relaxed);
-    }
-    handle
-}
+pub fn egl_lib() -> &'static Library {
+    EGL_LIB.get_or_init(|| {
+        // SAFETY: loading libEGL is inherently unsafe (runs its init routines),
+        // but we just use it for symbol resolution so it's fine
+        let lib = unsafe {
+            Library::open(Some("libEGL.so"), RTLD_LAZY | RTLD_LOCAL)
+                .expect("failed to open libEGL.so")
+        };
 
-pub fn egl_handle() -> *mut ffi::c_void {
-    let mut handle = EGL_HANDLE.load(atomic::Ordering::Relaxed);
-    if handle.is_null() {
-        handle = open_lib(&EGL_HANDLE, c"libEGL.so");
-        EGL_HANDLE.store(handle, atomic::Ordering::Relaxed);
+        // Load eglGetProcAddress while we have the library handle.
+        match unsafe {
+            lib.get::<unsafe extern "C" fn(*const ffi::c_char) -> *const ffi::c_void>(
+                b"eglGetProcAddress\0",
+            )
+        } {
+            Ok(sym) => {
+                let _ = EGL_GET_PROC.set(*sym);
+            },
+            Err(e) => {
+                log::warn!("Failed to load eglGetProcAddress from libEGL.so! You may encounter some issues..");
+                log::warn!("{}", e);
+            }
+        }
 
-        // load eglGetProcAddress once while we have the handle
-        let get_proc = unsafe { libc::dlsym(handle, c"eglGetProcAddress".as_ptr()) };
-        EGL_GET_PROC.store(get_proc, atomic::Ordering::Relaxed);
-    }
-    handle
-}
-
-fn get_egl_get_proc() -> Option<unsafe extern "C" fn(*const ffi::c_char) -> *const ffi::c_void> {
-    let ptr = EGL_GET_PROC.load(atomic::Ordering::Relaxed);
-    if ptr.is_null() { return None; }
-    Some(unsafe { std::mem::transmute(ptr) })
+        lib
+    })
 }
 
 fn intercept_lookup(name: *const ffi::c_char) -> *const ffi::c_void {
-    if name.is_null() { return ptr::null(); }
+    if name.is_null() {
+        return ptr::null();
+    }
 
     let c_str = unsafe { ffi::CStr::from_ptr(name) };
 
     if let Ok(s) = c_str.to_str() {
         for entry in INTERCEPT_REGISTRY.iter() {
             if entry.name == s {
-                log::info!("Intercepted : {}", s);
+                log::info!("Overriding function : {}", s);
                 return entry.ptr;
             }
         }
@@ -62,24 +68,52 @@ fn intercept_lookup(name: *const ffi::c_char) -> *const ffi::c_void {
 }
 
 pub fn fogle_get_proc_address(name: *const ffi::c_char) -> *const ffi::c_void {
-    if name.is_null() { return ptr::null(); }
+    if name.is_null() {
+        return ptr::null();
+    }
 
     let ptr = intercept_lookup(name);
-    if !ptr.is_null() { return ptr; }
+    if !ptr.is_null() {
+        return ptr;
+    }
 
     egl_get_proc_address(name)
 }
 
 pub fn egl_get_proc_address(name: *const ffi::c_char) -> *const ffi::c_void {
-    if name.is_null() { return ptr::null(); }
+    if name.is_null() {
+        return ptr::null();
+    }
+
+    let lib = egl_lib(); // trigger lazy load
     unsafe {
-        if let Some(f) = get_egl_get_proc() {
+        // Try eglGetProcAddress first.
+        if let Some(f) = EGL_GET_PROC.get() {
             let ptr = f(name);
-            if !ptr.is_null() { return ptr; }
-            log::error!("Failed to load {}", ffi::CStr::from_ptr(name).to_str().unwrap());
+            if !ptr.is_null() {
+                return ptr;
+            }
+
+            log::error!(
+                "Failed to load function : {} (via: eglGetProcAddress)",
+                ffi::CStr::from_ptr(name).to_str().unwrap()
+            );
         }
 
-        libc::dlsym(egl_handle(), name)
+        match lib.get::<unsafe extern "C" fn()>(std::slice::from_raw_parts(
+            name as *const u8,
+            ffi::CStr::from_ptr(name).to_bytes_with_nul().len(),
+        )) {
+            Ok(sym) => *sym as *const ffi::c_void,
+            Err(_) => {
+                log::error!(
+                    "Failed to get function : {} (via: dlsym)",
+                    ffi::CStr::from_ptr(name).to_str().unwrap()
+                );
+
+                ptr::null()
+            },
+        }
     }
 }
 
