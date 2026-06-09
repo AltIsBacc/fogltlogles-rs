@@ -19,7 +19,7 @@ impl FogleContext {
     fn load_gles() -> gles2::Gles2 {
         let loader = |name| {
             let cname = ffi::CString::new(name).unwrap();
-            api::gles_get_proc_address(cname.as_ptr())
+            api::egl_get_proc_address(cname.as_ptr())
         };
 
         gles2::Gles2::load_with(loader)

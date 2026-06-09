@@ -14,7 +14,6 @@ unsafe impl Sync for InterceptEntry {}
 pub static INTERCEPT_REGISTRY: [InterceptEntry];
 
 static EGL_HANDLE: atomic::AtomicPtr<ffi::c_void> = atomic::AtomicPtr::new(ptr::null_mut());
-static GLES_HANDLE: atomic::AtomicPtr<ffi::c_void> = atomic::AtomicPtr::new(ptr::null_mut());
 static EGL_GET_PROC: atomic::AtomicPtr<ffi::c_void> = atomic::AtomicPtr::new(ptr::null_mut());
 
 fn open_lib(cell: &atomic::AtomicPtr<ffi::c_void>, name: &ffi::CStr) -> *mut ffi::c_void {
@@ -38,8 +37,6 @@ pub fn egl_handle() -> *mut ffi::c_void {
     }
     handle
 }
-
-pub fn gles_handle() -> *mut ffi::c_void { open_lib(&GLES_HANDLE, c"libGLESv2.so") }
 
 fn get_egl_get_proc() -> Option<unsafe extern "C" fn(*const ffi::c_char) -> *const ffi::c_void> {
     let ptr = EGL_GET_PROC.load(atomic::Ordering::Relaxed);
@@ -69,15 +66,7 @@ pub fn fogle_get_proc_address(name: *const ffi::c_char) -> *const ffi::c_void {
     let ptr = intercept_lookup(name);
     if !ptr.is_null() { return ptr; }
 
-    let ptr = gles_get_proc_address(name);
-    if !ptr.is_null() { return ptr; }
-
     egl_get_proc_address(name)
-}
-
-pub fn gles_get_proc_address(name: *const ffi::c_char) -> *const ffi::c_void {
-    if name.is_null() { return ptr::null(); }
-    unsafe { libc::dlsym(gles_handle(), name) }
 }
 
 pub fn egl_get_proc_address(name: *const ffi::c_char) -> *const ffi::c_void {
