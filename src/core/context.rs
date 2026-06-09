@@ -9,16 +9,29 @@ pub struct FogleContext {
 
 impl FogleContext {
     pub fn new() -> Self {
-        let loader = |name| {
-            let cname = ffi::CString::new(name).unwrap();
-            api::get_proc_address_passthrough(cname.as_ptr())
-        };
-
         Self {
-            gles: gles2::Gles2::load_with(loader),
-            egl: egl::Egl::load_with(loader),
+            gles: Self::load_gles(),
+            egl: Self::load_egl(),
             ffpe: ffpe::context::FogleFFPEContext::new(),
         }
+    }
+
+    fn load_gles() -> gles2::Gles2 {
+        let loader = |name| {
+            let cname = ffi::CString::new(name).unwrap();
+            api::gles_get_proc_address(cname.as_ptr())
+        };
+
+        gles2::Gles2::load_with(loader)
+    }
+
+    fn load_egl() -> egl::Egl {
+        let loader = |name| {
+            let cname = ffi::CString::new(name).unwrap();
+            api::egl_get_proc_address(cname.as_ptr())
+        };
+
+        egl::Egl::load_with(loader)
     }
 }
 
@@ -39,6 +52,7 @@ pub fn get_global_context_raw() -> *mut FogleContext {
     GLOBAL_CTX.load(Ordering::Relaxed)
 }
 
+#[inline(always)]
 pub fn get_global_context() -> Option<&'static FogleContext> {
     let ctx_ptr = get_global_context_raw();
 

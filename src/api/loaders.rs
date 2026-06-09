@@ -18,7 +18,7 @@ pub mod glx_interface {
     #[unsafe(no_mangle)]
     pub unsafe extern "C" fn glXGetProcAddress(name: *const u8) -> Option<GenericFuncPtr> {
         if name.is_null() { return None; }
-        let ptr = crate::api::get_proc_address(name as *const std::ffi::c_char);
+        let ptr = crate::api::fogle_get_proc_address(name as *const std::ffi::c_char);
         unsafe {
             std::mem::transmute::<*const std::ffi::c_void, Option<GenericFuncPtr>>(ptr)
         }
@@ -39,7 +39,7 @@ pub mod egl_interface {
     #[unsafe(no_mangle)]
     pub unsafe extern "C" fn eglGetProcAddress(name: *const std::ffi::c_char) -> Option<GenericFuncPtr> {
         if name.is_null() { return None; }
-        let ptr = crate::api::get_proc_address(name);
+        let ptr = crate::api::fogle_get_proc_address(name);
         unsafe {
             std::mem::transmute::<*const std::ffi::c_void, Option<GenericFuncPtr>>(ptr)
         }
@@ -53,7 +53,7 @@ pub mod wgl_interface {
     #[unsafe(no_mangle)]
     pub unsafe extern "system" fn wglGetProcAddress(name: *const std::ffi::c_char) -> Option<GenericWinFuncPtr> {
         if name.is_null() { return None; }
-        let ptr = crate::api::get_proc_address(name);
+        let ptr = crate::api::fogle_get_proc_address(name);
         unsafe {
             std::mem::transmute::<*const std::ffi::c_void, Option<GenericWinFuncPtr>>(ptr)
         }
