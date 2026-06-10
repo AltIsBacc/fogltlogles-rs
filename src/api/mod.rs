@@ -1,4 +1,4 @@
-use std::{ffi, ptr, sync::OnceLock};
+use std::{env, ffi, ptr, sync::OnceLock};
 
 pub mod macros;
 pub mod loaders;
@@ -22,11 +22,13 @@ static EGL_GET_PROC: OnceLock<
 
 pub fn egl_lib() -> &'static Library {
     EGL_LIB.get_or_init(|| {
+        let lib_path = &env::var("LIBGL_EGL").unwrap_or("libEGL.so".into());
+
         // SAFETY: loading libEGL is inherently unsafe (runs its init routines),
         // but we just use it for symbol resolution so it's fine
         let lib = unsafe {
-            Library::open(Some("libEGL.so"), RTLD_LAZY | RTLD_LOCAL)
-                .expect("failed to open libEGL.so")
+            Library::open(Some(lib_path), RTLD_LAZY | RTLD_LOCAL)
+                .unwrap_or_else(|_| panic!("Failed to open {}", lib_path))
         };
 
         // Load eglGetProcAddress while we have the library handle.
@@ -81,7 +83,7 @@ pub fn egl_get_proc_address(name: *const ffi::c_char) -> *const ffi::c_void {
                 return ptr;
             }
 
-            log::error!(
+            log::trace!(
                 "Failed to load function : {} (via: eglGetProcAddress)",
                 ffi::CStr::from_ptr(name).to_str().unwrap()
             );
@@ -93,7 +95,7 @@ pub fn egl_get_proc_address(name: *const ffi::c_char) -> *const ffi::c_void {
         )) {
             Ok(sym) => *sym as *const ffi::c_void,
             Err(_) => {
-                log::error!(
+                log::trace!(
                     "Failed to get function : {} (via: dlsym)",
                     ffi::CStr::from_ptr(name).to_str().unwrap()
                 );
