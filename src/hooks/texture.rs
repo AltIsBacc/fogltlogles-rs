@@ -1,6 +1,6 @@
 use std::ffi;
 
-use crate::{core::context::FogleContext, register_ov};
+use crate::{bindings, core::context::FogleContext, register_ov};
 
 register_ov! {
     fn glTexImage2D(
@@ -13,10 +13,8 @@ register_ov! {
         format: u32,
         type_: u32,
         pixels: *const ffi::c_void,
-    ) => |ctx: Option<&'_ FogleContext>| {
-        let ctx = ctx.expect("Context uninitialized!");
-
-        ctx.gles.TexImage2D(
+    ) => |ctx: Option<&'_ mut FogleContext>| {
+        bindings::gles().TexImage2D(
             target, level, internalformat,
             width, height,
             border, format, type_,

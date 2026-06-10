@@ -8,7 +8,7 @@ macro_rules! register_export {
             #[allow(unsafe_op_in_unsafe_fn)]
             pub unsafe extern "C" fn $func_name( $( $arg_name : $arg_type ),* ) $( -> $ret_type )? {
                 let closure = $body;
-                closure($crate::core::context::get_global_context())
+                closure($crate::core::context::current_context())
             }
 
             #[allow(non_snake_case)]
@@ -31,7 +31,7 @@ macro_rules! register_func {
             #[allow(unsafe_op_in_unsafe_fn)]
             pub unsafe extern "C" fn $func_name( $( $arg_name : $arg_type ),* ) $( -> $ret_type )? {
                 let closure = $body;
-                closure($crate::core::context::get_global_context())
+                closure($crate::core::context::current_context())
             }
 
             #[allow(non_snake_case)]
@@ -55,7 +55,7 @@ macro_rules! register_ov {
             #[allow(unsafe_op_in_unsafe_fn)]
             pub unsafe extern "C" fn [<ov_ $func_name>]( $( $arg_name : $arg_type ),* ) $( -> $ret_type )? {
                 let closure = $body;
-                closure($crate::core::context::get_global_context())
+                closure($crate::core::context::current_context())
             }
 
             #[allow(non_snake_case)]

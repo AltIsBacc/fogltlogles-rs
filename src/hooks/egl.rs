@@ -1,13 +1,14 @@
-use crate::{bindings::backend::egl, core::context, register_export, register_func};
+use std::ptr;
 
-#[macro_export]
+use crate::{bindings::{apis, backend::egl}, core::context, register_func};
+
 macro_rules! register_egl_passthrough {
     // zero-arg variant
     ($func_name:ident () $( -> $ret_type:ty )? , $method:ident) => {
         $crate::register_func!(
             fn $func_name() $( -> $ret_type )? => |_ctx| {
                 crate::init();
-                let ctx = $crate::core::context::get_global_context()
+                let ctx = $crate::core::context::current_context()
                     .expect("Context not initialized");
                 unsafe { ctx.egl.$method() }
             }
@@ -18,7 +19,7 @@ macro_rules! register_egl_passthrough {
         $crate::register_func!(
             fn $func_name( $( $arg_name : $arg_type ),+ ) $( -> $ret_type )? => |_ctx| {
                 crate::init();
-                let ctx = $crate::core::context::get_global_context()
+                let ctx = $crate::core::context::current_context()
                     .expect("Context not initialized");
                 unsafe { ctx.egl.$method($( $arg_name ),+) }
             }
@@ -27,19 +28,52 @@ macro_rules! register_egl_passthrough {
 }
 
 register_func!(
+    fn eglCreateContext(
+        dpy: egl::types::EGLDisplay,
+        config: egl::types::EGLConfig,
+        share_context: egl::types::EGLContext,
+        attrib_list: *const egl::types::EGLint,
+    ) -> egl::types::EGLContext => |_| {
+        let result = unsafe {
+           apis::egl().CreateContext(dpy, config, share_context, attrib_list)
+        };
+
+        if !result.is_null() {
+            context::register_context(result);
+        }
+
+        result
+    }
+);
+
+register_func!(
+    fn eglDestroyContext(
+        dpy: egl::types::EGLDisplay,
+        ctx: egl::types::EGLContext,
+    ) -> egl::types::EGLBoolean => |_| {
+        let result = unsafe {
+            apis::egl().DestroyContext(dpy, ctx)
+        };
+
+        if result != 0 {
+            context::unregister_context(ctx);
+        }
+
+        result
+    }
+);
+
+register_func!(
     fn eglMakeCurrent(
         dpy: egl::types::EGLDisplay,
         draw: egl::types::EGLSurface,
         read: egl::types::EGLSurface,
-        ctxx: egl::types::EGLContext,
-    ) -> egl::types::EGLBoolean => |_ctx| {
-        crate::init();
-        let ctx = context::get_global_context()
-            .expect("Context not initialized");
-        let result = unsafe { ctx.egl.MakeCurrent(dpy, draw, read, ctxx) };
-        log::info!("eglMakeCurrent result={} err=0x{:x}", result, unsafe { ctx.egl.GetError() });
+        ctx: egl::types::EGLContext,
+    ) -> egl::types::EGLBoolean => |_| {
+        let result = unsafe { apis::egl().MakeCurrent(dpy, draw, read, ctx) };
+        log::trace!("eglMakeCurrent result={} err=0x{:x} ctx={:p}", result, unsafe { apis::egl().GetError() }, ctx);
 
-        if result != 0 { crate::main(); }
+        if result != 0 && !ctx.is_null() { crate::main(); }
         result
     }
 );
@@ -52,8 +86,6 @@ register_egl_passthrough!(eglGetConfigAttrib(dpy: egl::types::EGLDisplay, config
 register_egl_passthrough!(eglGetError() -> egl::types::EGLint, GetError);
 register_egl_passthrough!(eglInitialize(dpy: egl::types::EGLDisplay, major: *mut egl::types::EGLint, minor: *mut egl::types::EGLint) -> egl::types::EGLBoolean, Initialize);
 register_egl_passthrough!(eglTerminate(dpy: egl::types::EGLDisplay) -> egl::types::EGLBoolean, Terminate);
-register_egl_passthrough!(eglCreateContext(dpy: egl::types::EGLDisplay, config: egl::types::EGLConfig, share_context: egl::types::EGLContext, attrib_list: *const egl::types::EGLint) -> egl::types::EGLContext, CreateContext);
-register_egl_passthrough!(eglDestroyContext(dpy: egl::types::EGLDisplay, ctx_: egl::types::EGLContext) -> egl::types::EGLBoolean, DestroyContext);
 register_egl_passthrough!(eglDestroySurface(dpy: egl::types::EGLDisplay, surface: egl::types::EGLSurface) -> egl::types::EGLBoolean, DestroySurface);
 register_egl_passthrough!(eglCreateWindowSurface(dpy: egl::types::EGLDisplay, config: egl::types::EGLConfig, win: egl::types::EGLNativeWindowType, attrib_list: *const egl::types::EGLint) -> egl::types::EGLSurface, CreateWindowSurface);
 register_egl_passthrough!(eglCreatePbufferSurface(dpy: egl::types::EGLDisplay, config: egl::types::EGLConfig, attrib_list: *const egl::types::EGLint) -> egl::types::EGLSurface, CreatePbufferSurface);
