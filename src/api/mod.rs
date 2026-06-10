@@ -48,13 +48,13 @@ pub fn egl_lib() -> &'static Library {
     })
 }
 
-fn intercept_lookup(name: *const ffi::c_char) -> *const ffi::c_void {
+pub fn fogle_get_proc_address(name: *const ffi::c_char) -> *const ffi::c_void {
+    crate::init(); // this is the main entrypoint of the renderer
     if name.is_null() {
         return ptr::null();
     }
 
     let c_str = unsafe { ffi::CStr::from_ptr(name) };
-
     if let Ok(s) = c_str.to_str() {
         for entry in INTERCEPT_REGISTRY.iter() {
             if entry.name == s {
@@ -62,19 +62,6 @@ fn intercept_lookup(name: *const ffi::c_char) -> *const ffi::c_void {
                 return entry.ptr;
             }
         }
-    }
-
-    ptr::null()
-}
-
-pub fn fogle_get_proc_address(name: *const ffi::c_char) -> *const ffi::c_void {
-    if name.is_null() {
-        return ptr::null();
-    }
-
-    let ptr = intercept_lookup(name);
-    if !ptr.is_null() {
-        return ptr;
     }
 
     egl_get_proc_address(name)

@@ -1,12 +1,10 @@
-use std::{cell::Cell, collections::HashMap, ptr, sync::{LazyLock, Mutex}};
-use crate::{bindings::{self, backend::{egl, gles2}}, ffpe};
+use std::ffi;
+use std::sync::OnceLock;
+
+use crate::bindings::{self, backend::gles2};
 
 pub struct FogleContext {
-    pub gles: &'static bindings::apis::GlobalDispatch<gles2::Gles2>,
-    pub egl:  &'static bindings::apis::GlobalDispatch<egl::Egl>,
-    pub ffpe: ffpe::context::FogleFFPEContext,
-
-    ready: bool,  // once flag for ensure_requirements or some other init things
+    initialized: OnceLock<()>,
 }
 
 impl Default for FogleContext {
@@ -16,26 +14,23 @@ impl Default for FogleContext {
 impl FogleContext {
     pub fn new() -> Self {
         Self {
-            gles: bindings::apis::gles(),
-            egl: bindings::apis::egl(),
-            ffpe: ffpe::context::FogleFFPEContext::new(),
-            ready: false,
+            initialized: OnceLock::new(),
         }
     }
 
-    pub fn init(&mut self) {
-        self.ensure_requirements();
-
-        self.ready = true;
+    fn ensure_init(&self) {
+        self.initialized.get_or_init(|| {
+            self.ensure_requirements();
+        });
     }
 
     fn ensure_requirements(&self) {
         let version = unsafe {
-            let ptr = self.gles.GetString(gles2::VERSION);
+            let ptr = bindings::gles().GetString(gles2::VERSION);
             if ptr.is_null() {
                 panic!("FOGLTLOGLES: glGetString(GL_VERSION) returned null — no current context?");
             }
-            std::ffi::CStr::from_ptr(ptr as *const std::ffi::c_char)
+            ffi::CStr::from_ptr(ptr as *const ffi::c_char)
                 .to_str()
                 .expect("GL_VERSION is not valid UTF-8")
         };
@@ -58,69 +53,79 @@ impl FogleContext {
 
         log::info!("FOGLTLOGLES: context ready on ES {}.{}", major, minor);
     }
-
 }
 
-type EGLContextHandle = usize;
+pub mod management {
+    use std::{cell::RefCell, collections::HashMap, sync::{Arc, LazyLock, Mutex}};
 
-static CONTEXT_MAP: LazyLock<Mutex<HashMap<EGLContextHandle, Box<FogleContext>>>> = LazyLock::new(||  Mutex::new(HashMap::new()));
+    use crate::bindings::backend::egl;
 
-thread_local! {
-    static CURRENT_CTX: Cell<*mut FogleContext> = Cell::new(ptr::null_mut());
-}
+    use super::*;
 
-pub fn register_context(handle: egl::types::EGLContext) {
-    CONTEXT_MAP
-        .lock()
-        .unwrap()
-        .insert(handle as EGLContextHandle, Box::new(FogleContext::new()));
-}
+    type EGLContextHandle = usize;
 
-pub fn unregister_context(handle: egl::types::EGLContext) {
-    CONTEXT_MAP
-        .lock()
-        .unwrap()
-        .remove(&(handle as EGLContextHandle));
-}
+    static CONTEXT_MAP: LazyLock<Mutex<HashMap<EGLContextHandle, Arc<FogleContext>>>> =
+        LazyLock::new(|| Mutex::new(HashMap::new()));
 
-pub fn bind_context(handle: egl::types::EGLContext) -> bool {
-    if handle.is_null() {
-        // EGL_NO_CONTEXT
-        CURRENT_CTX.with(|p| p.set(ptr::null_mut()));
-        return true;
+    thread_local! {
+        static CURRENT_CTX: RefCell<Option<Arc<FogleContext>>> = const { RefCell::new(None) };
     }
 
-    let mut map = CONTEXT_MAP.lock().unwrap();
-    let ctx = match map.get_mut(&(handle as EGLContextHandle)) {
-        Some(c) => c,
-        None => {
-            log::error!("bind_context: untracked EGLContext {:p}", handle);
-            return false;
-        }
-    };
-
-    if !ctx.ready {
-        ctx.init();
+    pub fn register(handle: egl::types::EGLContext) {
+        CONTEXT_MAP
+            .lock()
+            .unwrap()
+            .insert(handle as EGLContextHandle, Arc::new(FogleContext::new()));
     }
 
-    CURRENT_CTX.with(|p| p.set(ctx.as_mut() as *mut _));
-    true
+    pub fn unregister(handle: egl::types::EGLContext) {
+        CONTEXT_MAP
+            .lock()
+            .unwrap()
+            .remove(&(handle as EGLContextHandle));
+    }
+
+    pub fn bind(handle: egl::types::EGLContext) -> bool {
+        if handle.is_null() {
+            CURRENT_CTX.with_borrow_mut(|p| *p = None);
+            return true;
+        }
+
+        let ctx = {
+            let map = CONTEXT_MAP.lock().unwrap();
+            match map.get(&(handle as EGLContextHandle)) {
+                Some(c) => c.clone(),
+                None => {
+                    log::error!("bind_context: untracked EGLContext {:p}", handle);
+                    return false;
+                }
+            }
+        };
+
+        ctx.ensure_init();
+
+        CURRENT_CTX.with_borrow_mut(|p| *p = Some(ctx));
+
+        true
+    }
+
+    #[inline(always)]
+    pub fn current() -> Option<Arc<FogleContext>> {
+        CURRENT_CTX.with_borrow(|p| p.clone())
+    }
 }
 
-#[inline(always)]
-pub fn current_context() -> Option<&'static mut FogleContext> {
-    CURRENT_CTX.with(|p| {
-        let raw = p.get();
-        if raw.is_null() { None } else {
-            // SAFETY:
-            // - Box<FogleContext> has a stable address; HashMap resizes never
-            //   move existing boxes.
-            // - EGL guarantees a context is not destroyed while current, so
-            //   the box outlives this reference.
-            // - thread_local access means only this thread reads this pointer;
-            //   no concurrent &mut aliasing is possible
-            Some(unsafe { &mut *raw })
-        }
-    })
+pub mod macros {
+    /// Returns the `FogleContext` bound to the current thread.
+    ///
+    /// # Panics
+    /// Panics if no context has been bound on the calling thread via [`core::context::management::bind`].
+    #[macro_export]
+    macro_rules! current_ctx {
+        () => {
+            $crate::core::context::management::current()
+                .expect("No context initialized on the current thread!")
+        };
+    }
 }
 

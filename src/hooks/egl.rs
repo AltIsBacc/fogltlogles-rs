@@ -1,27 +1,20 @@
-use std::ptr;
 
-use crate::{bindings::{apis, backend::egl}, core::context, register_func};
+use crate::{bindings::{self, backend::egl}, core::context, register_func};
 
 macro_rules! register_egl_passthrough {
     // zero-arg variant
     ($func_name:ident () $( -> $ret_type:ty )? , $method:ident) => {
         $crate::register_func!(
-            fn $func_name() $( -> $ret_type )? => |_ctx| {
-                crate::init();
-                let ctx = $crate::core::context::current_context()
-                    .expect("Context not initialized");
-                unsafe { ctx.egl.$method() }
+            fn $func_name() $( -> $ret_type )? => {
+                unsafe { $crate::bindings::egl().$method() }
             }
         );
     };
     // one-or-more-arg variant
     ($func_name:ident ( $( $arg_name:ident : $arg_type:ty ),+ $(,)? ) $( -> $ret_type:ty )? , $method:ident) => {
         $crate::register_func!(
-            fn $func_name( $( $arg_name : $arg_type ),+ ) $( -> $ret_type )? => |_ctx| {
-                crate::init();
-                let ctx = $crate::core::context::current_context()
-                    .expect("Context not initialized");
-                unsafe { ctx.egl.$method($( $arg_name ),+) }
+            fn $func_name( $( $arg_name : $arg_type ),+ ) $( -> $ret_type )? => {
+                unsafe { $crate::bindings::egl().$method($( $arg_name ),+) }
             }
         );
     };
@@ -33,13 +26,13 @@ register_func!(
         config: egl::types::EGLConfig,
         share_context: egl::types::EGLContext,
         attrib_list: *const egl::types::EGLint,
-    ) -> egl::types::EGLContext => |_| {
+    ) -> egl::types::EGLContext => {
         let result = unsafe {
-           apis::egl().CreateContext(dpy, config, share_context, attrib_list)
+           bindings::egl().CreateContext(dpy, config, share_context, attrib_list)
         };
 
         if !result.is_null() {
-            context::register_context(result);
+            context::management::register(result);
         }
 
         result
@@ -50,13 +43,13 @@ register_func!(
     fn eglDestroyContext(
         dpy: egl::types::EGLDisplay,
         ctx: egl::types::EGLContext,
-    ) -> egl::types::EGLBoolean => |_| {
+    ) -> egl::types::EGLBoolean => {
         let result = unsafe {
-            apis::egl().DestroyContext(dpy, ctx)
+            bindings::egl().DestroyContext(dpy, ctx)
         };
 
         if result != 0 {
-            context::unregister_context(ctx);
+            context::management::unregister(ctx);
         }
 
         result
@@ -69,11 +62,15 @@ register_func!(
         draw: egl::types::EGLSurface,
         read: egl::types::EGLSurface,
         ctx: egl::types::EGLContext,
-    ) -> egl::types::EGLBoolean => |_| {
-        let result = unsafe { apis::egl().MakeCurrent(dpy, draw, read, ctx) };
-        log::trace!("eglMakeCurrent result={} err=0x{:x} ctx={:p}", result, unsafe { apis::egl().GetError() }, ctx);
+    ) -> egl::types::EGLBoolean => {
+        let result = unsafe {
+            bindings::egl().MakeCurrent(dpy, draw, read, ctx)
+        };
 
-        if result != 0 && !ctx.is_null() { crate::main(); }
+        if result != 0 {
+            context::management::bind(ctx);
+        }
+
         result
     }
 );

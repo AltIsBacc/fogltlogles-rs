@@ -6,10 +6,7 @@ macro_rules! register_export {
             #[unsafe(no_mangle)]
             #[allow(non_snake_case)]
             #[allow(unsafe_op_in_unsafe_fn)]
-            pub unsafe extern "C" fn $func_name( $( $arg_name : $arg_type ),* ) $( -> $ret_type )? {
-                let closure = $body;
-                closure($crate::core::context::current_context())
-            }
+            pub unsafe extern "C" fn $func_name( $( $arg_name : $arg_type ),* ) $( -> $ret_type )? $body
 
             #[allow(non_snake_case)]
             mod [<$func_name _entry>] {
@@ -29,10 +26,7 @@ macro_rules! register_func {
         paste::paste! {
             #[allow(non_snake_case)]
             #[allow(unsafe_op_in_unsafe_fn)]
-            pub unsafe extern "C" fn $func_name( $( $arg_name : $arg_type ),* ) $( -> $ret_type )? {
-                let closure = $body;
-                closure($crate::core::context::current_context())
-            }
+            pub unsafe extern "C" fn $func_name( $( $arg_name : $arg_type ),* ) $( -> $ret_type )? $body 
 
             #[allow(non_snake_case)]
             mod [<$func_name _entry>] {
@@ -53,10 +47,7 @@ macro_rules! register_ov {
         paste::paste! {
             #[allow(non_snake_case)]
             #[allow(unsafe_op_in_unsafe_fn)]
-            pub unsafe extern "C" fn [<ov_ $func_name>]( $( $arg_name : $arg_type ),* ) $( -> $ret_type )? {
-                let closure = $body;
-                closure($crate::core::context::current_context())
-            }
+            pub unsafe extern "C" fn [<ov_ $func_name>]( $( $arg_name : $arg_type ),* ) $( -> $ret_type )? $body
 
             #[allow(non_snake_case)]
             mod [<$func_name _ov_entry>] {

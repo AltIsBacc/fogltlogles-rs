@@ -1,6 +1,6 @@
 use std::ffi;
 
-use crate::{bindings, core::context::FogleContext, register_ov};
+use crate::{bindings, current_ctx, register_ov};
 
 register_ov! {
     fn glTexImage2D(
@@ -13,7 +13,9 @@ register_ov! {
         format: u32,
         type_: u32,
         pixels: *const ffi::c_void,
-    ) => |ctx: Option<&'_ mut FogleContext>| {
+    ) => {
+        let ctx = current_ctx!();
+
         bindings::gles().TexImage2D(
             target, level, internalformat,
             width, height,
