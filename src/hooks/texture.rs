@@ -1,8 +1,8 @@
 use std::ffi;
 
-use crate::{bindings, current_ctx, register_ov};
+use crate::{bindings, current_ctx, register_hook};
 
-register_ov! {
+register_hook! {
     fn glTexImage2D(
         target: u32,
         level: i32,

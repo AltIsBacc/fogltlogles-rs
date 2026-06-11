@@ -1,10 +1,10 @@
 
-use crate::{bindings::{self, backend::egl}, core::context, register_func};
+use crate::{bindings::{self, backend::egl}, core::context, register_fn};
 
 macro_rules! register_egl_passthrough {
     // zero-arg variant
     ($func_name:ident () $( -> $ret_type:ty )? , $method:ident) => {
-        $crate::register_func!(
+        $crate::register_fn!(
             fn $func_name() $( -> $ret_type )? => {
                 unsafe { $crate::bindings::egl().$method() }
             }
@@ -12,7 +12,7 @@ macro_rules! register_egl_passthrough {
     };
     // one-or-more-arg variant
     ($func_name:ident ( $( $arg_name:ident : $arg_type:ty ),+ $(,)? ) $( -> $ret_type:ty )? , $method:ident) => {
-        $crate::register_func!(
+        $crate::register_fn!(
             fn $func_name( $( $arg_name : $arg_type ),+ ) $( -> $ret_type )? => {
                 unsafe { $crate::bindings::egl().$method($( $arg_name ),+) }
             }
@@ -20,7 +20,7 @@ macro_rules! register_egl_passthrough {
     };
 }
 
-register_func!(
+register_fn!(
     fn eglCreateContext(
         dpy: egl::types::EGLDisplay,
         config: egl::types::EGLConfig,
@@ -39,7 +39,7 @@ register_func!(
     }
 );
 
-register_func!(
+register_fn!(
     fn eglDestroyContext(
         dpy: egl::types::EGLDisplay,
         ctx: egl::types::EGLContext,
@@ -56,7 +56,7 @@ register_func!(
     }
 );
 
-register_func!(
+register_fn!(
     fn eglMakeCurrent(
         dpy: egl::types::EGLDisplay,
         draw: egl::types::EGLSurface,

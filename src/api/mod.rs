@@ -10,10 +10,19 @@ pub struct InterceptEntry {
     pub ptr: *const ffi::c_void,
 }
 
-unsafe impl Sync for InterceptEntry {}
+unsafe impl Sync for InterceptEntry { }
 
 #[linkme::distributed_slice]
 pub static INTERCEPT_REGISTRY: [InterceptEntry];
+
+pub struct InterceptInitEntry {
+    pub init: fn(), 
+}
+
+unsafe impl Sync for InterceptInitEntry { }
+
+#[linkme::distributed_slice]
+pub static INTERCEPT_INIT_REGISTRY: [InterceptInitEntry];
 
 static EGL_LIB: OnceLock<Library> = OnceLock::new();
 static EGL_GET_PROC: OnceLock<

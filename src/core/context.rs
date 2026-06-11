@@ -1,10 +1,7 @@
-use std::ffi;
 use std::sync::OnceLock;
 
-use crate::bindings::{self, backend::gles2};
-
 pub struct FogleContext {
-    initialized: OnceLock<()>,
+    pub version: (u8, u8),
 }
 
 impl Default for FogleContext {
@@ -14,44 +11,8 @@ impl Default for FogleContext {
 impl FogleContext {
     pub fn new() -> Self {
         Self {
-            initialized: OnceLock::new(),
+            version: (0, 0),
         }
-    }
-
-    fn ensure_init(&self) {
-        self.initialized.get_or_init(|| {
-            self.ensure_requirements();
-        });
-    }
-
-    fn ensure_requirements(&self) {
-        let version = unsafe {
-            let ptr = bindings::gles().GetString(gles2::VERSION);
-            if ptr.is_null() {
-                panic!("FOGLTLOGLES: glGetString(GL_VERSION) returned null — no current context?");
-            }
-            ffi::CStr::from_ptr(ptr as *const ffi::c_char)
-                .to_str()
-                .expect("GL_VERSION is not valid UTF-8")
-        };
-
-        let (major, minor) = version
-            .strip_prefix("OpenGL ES ")
-            .and_then(|s| s.split_whitespace().next())
-            .and_then(|v| {
-                let mut it = v.splitn(2, '.');
-                Some((
-                    it.next()?.parse::<u32>().ok()?,
-                    it.next()?.parse::<u32>().ok()?,
-                ))
-            })
-            .unwrap_or_else(|| panic!("FOGLTLOGLES: cannot parse GL_VERSION: {:?}", version));
-
-        if major < 3 || (major == 3 && minor < 2) {
-            panic!("FOGLTLOGLES: OpenGL ES 3.2 required, got {}.{}", major, minor);
-        }
-
-        log::info!("FOGLTLOGLES: context ready on ES {}.{}", major, minor);
     }
 }
 
@@ -102,9 +63,9 @@ pub mod management {
             }
         };
 
-        ctx.ensure_init();
-
         CURRENT_CTX.with_borrow_mut(|p| *p = Some(ctx));
+
+        crate::late_init();
 
         true
     }
