@@ -16,7 +16,7 @@ unsafe impl Sync for InterceptEntry { }
 pub static INTERCEPT_REGISTRY: [InterceptEntry];
 
 pub struct InterceptInitEntry {
-    pub init: fn(), 
+    pub init: unsafe fn(), 
 }
 
 unsafe impl Sync for InterceptInitEntry { }

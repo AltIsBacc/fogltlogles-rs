@@ -1,19 +1,21 @@
-use std::{ffi, sync};
+use std::ffi;
 
 use multi_log::MultiLogger;
+use parking_lot::Once;
 
-use crate::bindings::backend::gles2;
+use crate::{bindings::backend::gles2, traits::common::ToStr};
 
+pub(crate) mod utils;
+pub(crate) mod traits;
 pub(crate) mod bindings;
-pub(crate) mod errors;
 
 pub(crate) mod core;
 pub(crate) mod api;
 pub(crate) mod ffpe;
 pub(crate) mod hooks;
 
-static INIT_ONCE: sync::Once = sync::Once::new();
-static LATE_INIT_ONCE: sync::Once = sync::Once::new();
+static INIT_ONCE: Once = Once::new();
+static LATE_INIT_ONCE: Once = Once::new();
 
 pub fn init() {
     INIT_ONCE.call_once(|| {
@@ -45,19 +47,13 @@ pub fn late_init() {
         ensure_requirements();
 
         api::INTERCEPT_INIT_REGISTRY.iter()
-            .for_each(|f| (f.init)());
+            .for_each(|f| unsafe { (f.init)() });
     });
 }
 
 fn ensure_requirements() {
     let version = unsafe {
-        let ptr = bindings::gles().GetString(gles2::VERSION);
-        if ptr.is_null() {
-            panic!("FOGLTLOGLES: glGetString(GL_VERSION) returned null — no current context?");
-        }
-        ffi::CStr::from_ptr(ptr as *const ffi::c_char)
-            .to_str()
-            .expect("GL_VERSION is not valid UTF-8")
+        bindings::gles().GetString(gles2::VERSION).to_str()
     };
 
     let (major, minor) = version
@@ -78,6 +74,6 @@ fn ensure_requirements() {
 
     log::info!("FOGLTLOGLES: context ready on ES {}.{}", major, minor);
 
-    current_ctx!().version = (major as u8, minor as u8);
+    current_ctx!().es_version = (major.try_into().unwrap(), minor.try_into().unwrap());
 }
 

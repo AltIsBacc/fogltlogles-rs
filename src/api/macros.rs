@@ -22,7 +22,8 @@ macro_rules! register_export {
             $crate::register_export!(fn $func_name( $( $arg_name : $arg_type ),* ) $( -> $ret_type )? => $body);
 
             #[allow(non_snake_case)]
-            fn [<init_ $func_name>]() $init_body
+            #[allow(unsafe_op_in_unsafe_fn)]
+            unsafe fn [<init_ $func_name>]() $init_body
 
             #[allow(non_snake_case)]
             mod [<$func_name _init_entry>] {
@@ -58,7 +59,8 @@ macro_rules! register_fn {
             $crate::register_fn!(fn $func_name( $( $arg_name : $arg_type ),* ) $( -> $ret_type )? => $body);
 
             #[allow(non_snake_case)]
-            fn [<init_ $func_name>]() $init_body
+            #[allow(unsafe_op_in_unsafe_fn)]
+            unsafe fn [<init_ $func_name>]() $init_body
 
             #[allow(non_snake_case)]
             mod [<$func_name _init_entry>] {
@@ -94,7 +96,8 @@ macro_rules! register_hook {
             $crate::register_hook!(fn $func_name( $( $arg_name : $arg_type ),* ) $( -> $ret_type )? => $body);
 
             #[allow(non_snake_case)]
-            fn [<init_ $func_name>]() $init_body
+            #[allow(unsafe_op_in_unsafe_fn)]
+            unsafe fn [<init_ $func_name>]() $init_body
 
             #[allow(non_snake_case)]
             mod [<$func_name _ov_init_entry>] {
@@ -126,7 +129,8 @@ macro_rules! register_redir {
             $crate::register_redir!($name => $target);
 
             #[allow(non_snake_case)]
-            fn [<init_ $func_name>]() $init_body
+            #[allow(unsafe_op_in_unsafe_fn)]
+            unsafe fn [<init_ $func_name>]() $init_body
 
             #[allow(non_snake_case)]
             mod [<$name _redir_init_entry>] {
