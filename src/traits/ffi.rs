@@ -12,3 +12,18 @@ impl FromFmtCString for CString {
     }
 }
 
+pub trait ToCString {
+    fn to_cstr(self) -> CString;
+    fn to_cstr_or(self, default: CString) -> CString;
+}
+
+impl ToCString for String {
+    fn to_cstr(self) -> CString {
+        CString::new(self).unwrap()
+    }
+
+    fn to_cstr_or(self, default: CString) -> CString {
+        CString::new(self).unwrap_or(default)
+    }
+}
+

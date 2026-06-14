@@ -8,10 +8,12 @@ build = "build.rs"
 crate-type = ["cdylib"]
 
 [dependencies]
-libc = "0.2"
-libloading = "0.9"
 linkme = "0.3"
 paste = "1.0"
+smart-default = "0.7"
+
+libc = "0.2"
+libloading = "0.9"
 
 log = "0.4"
 multi_log = "0.1"
@@ -20,11 +22,14 @@ android_logger = "0.15"
 env_logger = "0.11"
 
 parking_lot = "0.12"
+anyhow = "1.0"
 
 shaderc = { version = "0.10", default-features = false, features = ["prefer-static-linking"] }
 spirv-cross2 = { version = "0.7", default-features = false, features = ["glsl"] }
 
 glam = { version = "0.33", features = ["fast-math"] }
+
+gxhash = "3.5"
 
 [build-dependencies]
 khronos_api = "3.1"

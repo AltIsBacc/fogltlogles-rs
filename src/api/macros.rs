@@ -1,6 +1,7 @@
+
 #[macro_export]
 macro_rules! register_export {
-    (fn $func_name:ident ( $( $arg_name:ident : $arg_type:ty ),* $(,)? ) $( -> $ret_type:ty )? => $body:expr) => {
+    (fn $func_name:ident ( $( $arg_name:ident : $arg_type:ty ),* $(,)? ) $( -> $ret_type:ty )? => $body:block) => {
         paste::paste! {
             #[unsafe(no_mangle)]
             #[allow(non_snake_case)]
@@ -17,7 +18,7 @@ macro_rules! register_export {
             }
         }
     };
-    (fn $func_name:ident ( $( $arg_name:ident : $arg_type:ty ),* $(,)? ) $( -> $ret_type:ty )? => $body:expr, init: $init_body:expr) => {
+    (fn $func_name:ident ( $( $arg_name:ident : $arg_type:ty ),* $(,)? ) $( -> $ret_type:ty )? => $body:block, init: $init_body:block) => {
         paste::paste! {
             $crate::register_export!(fn $func_name( $( $arg_name : $arg_type ),* ) $( -> $ret_type )? => $body);
 
@@ -38,11 +39,11 @@ macro_rules! register_export {
 
 #[macro_export]
 macro_rules! register_fn {
-    (fn $func_name:ident ( $( $arg_name:ident : $arg_type:ty ),* $(,)? ) $( -> $ret_type:ty )? => $body:expr) => {
+    (fn $func_name:ident ( $( $arg_name:ident : $arg_type:ty ),* $(,)? ) $( -> $ret_type:ty )? => $body:block) => {
         paste::paste! {
             #[allow(non_snake_case)]
             #[allow(unsafe_op_in_unsafe_fn)]
-            pub unsafe extern "C" fn $func_name( $( $arg_name : $arg_type ),* ) $( -> $ret_type )? $body 
+            pub unsafe extern "C" fn $func_name( $( $arg_name : $arg_type ),* ) $( -> $ret_type )? $body
 
             #[allow(non_snake_case)]
             mod [<$func_name _entry>] {
@@ -54,7 +55,7 @@ macro_rules! register_fn {
             }
         }
     };
-    (fn $func_name:ident ( $( $arg_name:ident : $arg_type:ty ),* $(,)? ) $( -> $ret_type:ty )? => $body:expr, init: $init_body:expr) => {
+    (fn $func_name:ident ( $( $arg_name:ident : $arg_type:ty ),* $(,)? ) $( -> $ret_type:ty )? => $body:block, init: $init_body:block) => {
         paste::paste! {
             $crate::register_fn!(fn $func_name( $( $arg_name : $arg_type ),* ) $( -> $ret_type )? => $body);
 
@@ -75,7 +76,7 @@ macro_rules! register_fn {
 
 #[macro_export]
 macro_rules! register_hook {
-    (fn $func_name:ident ( $( $arg_name:ident : $arg_type:ty ),* $(,)? ) $( -> $ret_type:ty )? => $body:expr) => {
+    (fn $func_name:ident ( $( $arg_name:ident : $arg_type:ty ),* $(,)? ) $( -> $ret_type:ty )? => $body:block) => {
         paste::paste! {
             #[allow(non_snake_case)]
             #[allow(unsafe_op_in_unsafe_fn)]
@@ -91,7 +92,7 @@ macro_rules! register_hook {
             }
         }
     };
-    (fn $func_name:ident ( $( $arg_name:ident : $arg_type:ty ),* $(,)? ) $( -> $ret_type:ty )? => $body:expr, init: $init_body:expr) => {
+    (fn $func_name:ident ( $( $arg_name:ident : $arg_type:ty ),* $(,)? ) $( -> $ret_type:ty )? => $body:block, init: $init_body:block) => {
         paste::paste! {
             $crate::register_hook!(fn $func_name( $( $arg_name : $arg_type ),* ) $( -> $ret_type )? => $body);
 
@@ -124,22 +125,73 @@ macro_rules! register_redir {
             }
         }
     };
-    ($name:ident => $target:ident, init: $init_body:expr) => {
+    ($name:ident => $target:ident, init: $init_body:block) => {
         paste::paste! {
             $crate::register_redir!($name => $target);
 
             #[allow(non_snake_case)]
             #[allow(unsafe_op_in_unsafe_fn)]
-            unsafe fn [<init_ $func_name>]() $init_body
+            unsafe fn [<init_ $name>]() $init_body
 
             #[allow(non_snake_case)]
             mod [<$name _redir_init_entry>] {
                 #[linkme::distributed_slice($crate::api::INTERCEPT_INIT_REGISTRY)]
                 static __INIT_ENTRY: $crate::api::InterceptInitEntry = $crate::api::InterceptInitEntry {
-                    init: super::[<init_ $func_name>],
+                    init: super::[<init_ $name>],
                 };
             }
         }
+    };
+}
+
+#[macro_export]
+macro_rules! register_stub {
+    ($func_name:ident ( $( $arg_name:ident : $arg_type:ty ),* $(,)? ) $( -> $ret_type:ty )?) => {
+        $crate::register_fn!(
+            fn $func_name( $( $arg_name : $arg_type ),* ) $( -> $ret_type )? => {
+                static WARN_ONCE: std::sync::Once = std::sync::Once::new();
+                WARN_ONCE.call_once(|| {
+                    log::warn!(concat!(stringify!($func_name), " is not implemented (stub)"));
+                });
+                Default::default()
+            }
+        );
+    };
+    ($func_name:ident ( $( $arg_name:ident : $arg_type:ty ),* $(,)? ) -> $ret_type:ty, $ret_val:expr) => {
+        $crate::register_fn!(
+            fn $func_name( $( $arg_name : $arg_type ),* ) -> $ret_type => {
+                static WARN_ONCE: std::sync::Once = std::sync::Once::new();
+                WARN_ONCE.call_once(|| {
+                    log::warn!(concat!(stringify!($func_name), " is not implemented (stub)"));
+                });
+                $ret_val
+            }
+        );
+    };
+}
+
+#[macro_export]
+macro_rules! register_passthrough {
+    ($func_name:ident () $( -> $ret_type:ty )? , $binding:ident :: $method:ident) => {
+        $crate::register_fn!(
+            fn $func_name() $( -> $ret_type )? => {
+                { $crate::bindings::$binding().$method() }
+            }
+        );
+    };
+    ($func_name:ident ( $( $arg_name:ident : $arg_type:ty ),+ $(,)? ) $( -> $ret_type:ty )? , $binding:ident :: $method:ident) => {
+        $crate::register_fn!(
+            fn $func_name( $( $arg_name : $arg_type ),+ ) $( -> $ret_type )? => {
+                { $crate::bindings::$binding().$method($( $arg_name ),+) }
+            }
+        );
+    };
+    ($func_name:ident ( $( $arg_name:ident : $arg_type:ty as $cast_type:ty ),+ $(,)? ) $( -> $ret_type:ty )? , $binding:ident :: $method:ident) => {
+        $crate::register_fn!(
+            fn $func_name( $( $arg_name : $arg_type ),+ ) $( -> $ret_type )? => {
+                { $crate::bindings::$binding().$method($( $arg_name as $cast_type ),+) }
+            }
+        );
     };
 }
 

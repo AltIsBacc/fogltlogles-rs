@@ -74,6 +74,6 @@ fn ensure_requirements() {
 
     log::info!("FOGLTLOGLES: context ready on ES {}.{}", major, minor);
 
-    current_ctx!().es_version = (major.try_into().unwrap(), minor.try_into().unwrap());
+    current_ctx!().es.version = (major.try_into().unwrap(), minor.try_into().unwrap());
 }
 
