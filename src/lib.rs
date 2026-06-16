@@ -3,7 +3,7 @@ use std::ffi;
 use multi_log::MultiLogger;
 use parking_lot::Once;
 
-use crate::{bindings::backend::gles2, traits::common::ToStr};
+use crate::{bindings::backend::gles2, traits::ffi::{ToCStr, ToCString}};
 
 pub(crate) mod utils;
 pub(crate) mod traits;
@@ -53,10 +53,10 @@ pub fn late_init() {
 
 fn ensure_requirements() {
     let version = unsafe {
-        bindings::gles().GetString(gles2::VERSION).to_str()
+        bindings::gles().GetString(gles2::VERSION).to_cstr()
     };
 
-    let (major, minor) = version
+    let (major, minor) = version.to_str().unwrap()
         .strip_prefix("OpenGL ES ")
         .and_then(|s| s.split_whitespace().next())
         .and_then(|v| {
@@ -74,6 +74,12 @@ fn ensure_requirements() {
 
     log::info!("FOGLTLOGLES: context ready on ES {}.{}", major, minor);
 
-    current_ctx!().es.version = (major.try_into().unwrap(), minor.try_into().unwrap());
+    let ctx = current_ctx!();
+    ctx.es.version_double = (major.try_into().unwrap(), minor.try_into().unwrap());
+    ctx.es.version = version.to_cstring();
+    ctx.es.renderer = unsafe {
+        bindings::gles().GetString(gles2::RENDERER).to_cstring()
+    };
+    
 }
 

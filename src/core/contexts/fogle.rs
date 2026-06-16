@@ -1,7 +1,7 @@
 use std::ffi::CString;
 use smart_default::SmartDefault;
 
-use crate::bindings::frontend::gl;
+use crate::{bindings::frontend::gl, core::shader};
 
 #[derive(SmartDefault)]
 pub struct FogleContext {
@@ -16,6 +16,8 @@ pub struct FogleContext {
     pub renderer: CString,
 
     pub current_error: gl::types::GLbitfield,
+
+    pub shader_pipeline: shader::PipelineState,
 }
 
 impl FogleContext {

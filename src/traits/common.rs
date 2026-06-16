@@ -19,6 +19,7 @@ impl<'a> ToStr<'a> for *const gl::types::GLubyte {
         }
     }
 
+    #[inline]
     fn to_str_or(self, default: &'a str) -> &'a str {
         if self.is_null() {
             panic!("Pointer points to nothing!");

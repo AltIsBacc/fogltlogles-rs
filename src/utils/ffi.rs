@@ -54,7 +54,7 @@ pub unsafe fn combine_gl_strings(
 
     let mut combined_output = String::with_capacity(total_bytes);
     
-    for (idx, slice) in rust_slices.iter().enumerate() {
+    for (_, slice) in rust_slices.iter().enumerate() {
         combined_output.push_str(slice);
     }
 

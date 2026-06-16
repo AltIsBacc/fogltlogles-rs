@@ -1,8 +1,7 @@
 use anyhow::Result;
 use spirv_cross2::{Compiler, reflect::{DecorationValue, ResourceType, ShaderResources}, spirv::Decoration, targets::Glsl};
 
-use crate::bindings::frontend::gl;
-use crate::core::shader::TranspileState;
+use crate::{bindings::frontend::gl, core::shader::transpilation::TranspileContext};
 
 const ALL_DECORATIONS: &[Decoration] = &[
     Decoration::Location,
@@ -32,7 +31,7 @@ fn unset_decorations(
 fn assign_uniform_buffer_bindings(
     compiler: &mut Compiler<Glsl>,
     resources: &ShaderResources,
-    state: &mut TranspileState,
+    state: &mut TranspileContext,
 ) -> Result<()> {
     for res in resources.resources_for_type(ResourceType::UniformBuffer)? {
         let name = res.name.to_string();
@@ -54,7 +53,7 @@ fn assign_uniform_buffer_bindings(
 pub fn process_spv_bytecode(
     compiler: &mut Compiler<Glsl>,
     shader_type: gl::types::GLenum,
-    state: &mut TranspileState,
+    state: &mut TranspileContext,
 ) -> Result<()> {
     if shader_type == gl::COMPUTE_SHADER {
         return Ok(());

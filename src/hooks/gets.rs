@@ -1,6 +1,6 @@
 use std::ffi;
 
-use crate::{bindings::{self, backend::gles2, frontend::gl}, current_ctx, register_hook, traits::{common::ToStr, ffi::FromFmtCString}};
+use crate::{bindings::{self, frontend::gl}, current_ctx, register_hook, traits::ffi::FromFmtCString};
 
 register_hook! {
     fn glGetError() -> gl::types::GLenum => {
@@ -54,14 +54,14 @@ register_hook! {
         let ctx = current_ctx!();
 
         ctx.fogle.version = ffi::CString::from_fmt(
-            format_args!("4.5 (on ES {}.{})", ctx.es.version.0, ctx.es.version.1)
+            format_args!("4.5 (on ES {}.{})", ctx.es.version_double.0, ctx.es.version_double.1)
         );
 
         ctx.fogle.renderer = ffi::CString::from_fmt(
             format_args!(
                 "FOGLTLOGLES {} (on {})",
                 "crate::build_info::get_version()",
-                bindings::gles().GetString(gles2::VERSION).to_str()
+                ctx.es.renderer.to_str().unwrap()
             )
         );
     }

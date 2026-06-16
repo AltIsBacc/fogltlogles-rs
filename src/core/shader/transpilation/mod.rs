@@ -1,11 +1,22 @@
 use std::sync::LazyLock;
 
 use anyhow::Result;
+use serde::{Deserialize, Serialize};
 use spirv_cross2::{Module, targets::Glsl};
 
 use crate::{bindings::frontend::gl, traits::shaderc::ToShaderType, utils::sync::UnsafeSendSync};
 
 pub mod preprocess;
+
+type GxHashMap<K, V> = gxhash::HashMap<K, V>;
+
+#[derive(Default, Serialize, Deserialize, Clone)]
+pub struct TranspileContext {
+    pub bindings: GxHashMap<String, gl::types::GLuint>,
+
+    #[serde(skip, default)]
+    pub next_binding: u32,
+}
 
 pub static COMPILER: LazyLock<shaderc::Compiler> = LazyLock::new(
     || shaderc::Compiler::new().unwrap()
@@ -37,27 +48,35 @@ static SPV2ESSL_OPTIONS: LazyLock<spirv_cross2::compile::glsl::CompilerOptions> 
     options
 });
 
-pub fn transpile(
+pub fn glsl_to_spv(
     source: &str,
     shader_type: gl::types::GLenum,
-    transpile_state: &mut super::TranspileState
-) -> Result<String> {   
-    // 1. glsl -> spv
-    let spv = COMPILER.compile_into_spirv(
-        source, 
+) -> Result<Vec<u8>> {
+    let artifact = COMPILER.compile_into_spirv(
+        source,
         shader_type.to_shader_type()?,
-        "shader", 
-        "main", 
-        Some(&*GLSL2SPV_OPTIONS)
+        "shader",
+        "main",
+        Some(&*GLSL2SPV_OPTIONS),
     )?;
+    Ok(artifact.as_binary_u8().to_vec())
+}
 
-    // 2. spv -> essl
-    let module = Module::from_words(spv.as_binary());    
+pub fn spv_to_essl(
+    spv: &[u8],
+    shader_type: gl::types::GLenum,
+    transpile_ctx: &mut TranspileContext,
+) -> Result<String> {
+    let module = Module::from_words(bytemuck::cast_slice(spv));
     let mut compiler = spirv_cross2::Compiler::<Glsl>::new(module)?;
 
-    preprocess::process_spv_bytecode(&mut compiler, shader_type, transpile_state)?;
+    preprocess::process_spv_bytecode(&mut compiler, shader_type, transpile_ctx)?;
 
     let artifact = compiler.compile(&*SPV2ESSL_OPTIONS)?;
     Ok(artifact.to_string())
+}
+
+pub fn transpile(source: &str, shader_type: gl::types::GLenum, ctx: &mut TranspileContext) -> Result<String> {
+    spv_to_essl(&glsl_to_spv(source, shader_type)?, shader_type, ctx)
 }
 

@@ -1,149 +1,161 @@
-use std::hash::Hasher;
-
-use gxhash::GxHasher;
-
-use crate::{bindings::{self, frontend::gl}, core, current_ctx, register_hook, traits::ffi::ToCString, utils};
+use crate::{bindings::{self, frontend::gl}, core::{shader::cache}, current_ctx, register_hook, traits::{ffi::ToCString}, utils};
 
 register_hook! {
     fn glCreateShader(shader_type: gl::types::GLenum) -> gl::types::GLuint => {
-        let shader = bindings::gles().CreateShader(shader_type);
+        let ctx = current_ctx!();
+        let shader_id = bindings::gles().CreateShader(shader_type);
 
-        core::shader::PIPELINE_STATE.with_borrow_mut(|ps| {
-            ps.shaders.insert(shader, core::shader::ShaderInfo {
-                shader_type,
-                ..Default::default()
-            });
-        });
-
-        shader
-    }
-}
-
-register_hook! {
-    fn glShaderSource(
-        shader: gl::types::GLuint,
-        count: gl::types::GLsizei,
-        string: *const *const gl::types::GLchar,
-        length: *const gl::types::GLint,
-    ) => {
-        core::shader::PIPELINE_STATE.with_borrow_mut(|ps| {
-            if let Some(info) = ps.shaders.get_mut(&shader) {
-                info.source = utils::ffi::combine_gl_strings(count, string, length);
-            }
-        });
-    }
-}
-
-register_hook! {
-    fn glCompileShader(
-        _shader: gl::types::GLuint
-    ) => {
-        // no-op
-    }
-}
-
-register_hook! {
-    fn glAttachShader(
-        program: gl::types::GLuint,
-        shader: gl::types::GLuint,
-    ) => {
-        core::shader::PIPELINE_STATE.with_borrow_mut(|ps| {
-            if let Some(info) = ps.shaders.get(&shader) {
-                let shader_type = info.shader_type;
-                let source = info.source.clone();
-
-                if let Some(program_info) = ps.programs.get_mut(&program) {
-                    program_info.stages.entry(shader_type).or_default().push(source);
-
-                    // create driver shader and track app -> driver mapping
-                    let driver_shader = *program_info.driver_shaders.entry(shader_type).or_insert_with(|| {
-                        let s = bindings::gles().CreateShader(shader_type);
-                        bindings::gles().AttachShader(program, s);
-                        s
-                    });
-
-                    program_info.attached_shaders.insert(shader, driver_shader);
-                }
-            }
-        });
+        ctx.fogle.shader_pipeline.new_shader(shader_id, shader_type);
+        shader_id
     }
 }
 
 register_hook! {
     fn glCreateProgram() -> gl::types::GLuint => {
-        let program = bindings::gles().CreateProgram();
+        let ctx = current_ctx!();
+        let program_id = bindings::gles().CreateProgram();
 
-        core::shader::PIPELINE_STATE.with_borrow_mut(|ps| {
-            ps.programs.insert(program, core::shader::ProgramInfo::default());
-        });
-
-        program
+        ctx.fogle.shader_pipeline.new_program(program_id);
+        program_id
     }
 }
 
 register_hook! {
-    fn glLinkProgram(
-        program: gl::types::GLuint,
+    fn glShaderSource(
+        shader_id: gl::types::GLuint,
+        count: gl::types::GLsizei,
+        string: *const *const gl::types::GLchar,
+        length: *const gl::types::GLint,
     ) => {
         let ctx = current_ctx!();
-        core::shader::PIPELINE_STATE.with_borrow_mut(|ps| {
-            let Some(program_info) = ps.programs.get_mut(&program) else {
-                ctx.fogle.raise_error(gl::INVALID_VALUE);
-                return;
-            };
+        let Some(shader) = ctx.fogle.shader_pipeline.shaders.get_mut(&shader_id) else {
+            ctx.fogle.raise_error(gl::INVALID_OPERATION);
+            return;
+        };
 
-            let mut hasher = GxHasher::default();
+        shader.source = utils::ffi::combine_gl_strings(count, string, length);
+    }
+}
 
-            let mut active_types = [0u32; 6];
-            let mut count = 0;
-            for &shader_type in program_info.stages.keys() {
-                if count < active_types.len() {
-                    active_types[count] = shader_type;
-                    count += 1;
+register_hook! {
+    fn glCompileShader(
+        shader_id: gl::types::GLuint
+    ) => {
+        let ctx = current_ctx!();
+        let Some(shader) = ctx.fogle.shader_pipeline.shaders.get_mut(&shader_id) else {
+            ctx.fogle.raise_error(gl::INVALID_OPERATION);
+            return;
+        };
+
+        let spv_key = cache::keys::spv_key(&shader);
+
+        match cache::get_spv(spv_key) {
+            Ok(spv) => {
+                shader.spirv = spv;
+                shader.compiled = true;
+            }
+            Err(_) => {
+                shader.compile_source();
+                if shader.compiled {
+                    if let Err(e) = cache::put_spv(spv_key, &shader.spirv) {
+                        log::warn!("spv cache write failed: {e}");
+                    }
                 }
             }
+        }
+    }
+}
 
-            active_types[..count].sort_unstable();
+register_hook! {
+    fn glAttachShader(
+        program_id: gl::types::GLuint,
+        shader_id: gl::types::GLuint,
+    ) => {
+        let ctx = current_ctx!();
+        let Some(program) = ctx.fogle.shader_pipeline.programs.get_mut(&program_id) else {
+            ctx.fogle.raise_error(gl::INVALID_OPERATION);
+            return;
+        };
 
-            for &shader_type in &active_types[..count] {
-                let sources = &program_info.stages[&shader_type];
-                let full_stage_source = sources.join("\n");
+        let Some(shader) = ctx.fogle.shader_pipeline.shaders.get_mut(&shader_id) else {
+            ctx.fogle.raise_error(gl::INVALID_OPERATION);
+            return;
+        };
 
-                hasher.write(full_stage_source.as_bytes());
+        if let Err(_) = program.attach(&shader) {
+            ctx.fogle.raise_error(gl::INVALID_OPERATION);
+            return;
+        }
+    }
+}
 
-                let driver_shader = program_info.driver_shaders[&shader_type];
 
-                let converted = core::shader::transpilation::transpile(
-                    &full_stage_source, shader_type, &mut program_info.transpile_state
-                ).expect("Shader transpilation failed");
+register_hook! {
+    fn glLinkProgram(
+        program_id: gl::types::GLuint,
+    ) => {
+        let ctx = current_ctx!();
+        
+        let Some(program) = ctx.fogle.shader_pipeline.programs.get_mut(&program_id) else {
+            ctx.fogle.raise_error(gl::INVALID_VALUE);
+            return;
+        };
 
-                let c_str = converted.to_cstr();
-                bindings::gles().ShaderSource(driver_shader, 1, &c_str.as_ptr(), std::ptr::null());
-                bindings::gles().CompileShader(driver_shader);
+        let program_hash = cache::keys::program_key(&ctx.es, &program);
+        if let Ok(entry) = cache::get_program(program_hash) {
+            program.transpile_context = entry.transpile_context;
+            bindings::gles().ProgramBinary(
+                program_id,
+                entry.format,
+                entry.binary.as_ptr() as *const _,
+                entry.binary.len() as gl::types::GLint,
+            );
+            program.linked = true;
+            return;
+        }
 
-                let mut status = 0i32;
-                bindings::gles().GetShaderiv(driver_shader, gl::COMPILE_STATUS, &mut status);
-                if status != gl::TRUE as i32 {
-                    log::error!("Shader compilation failed for type {}", shader_type);
-                    ctx.fogle.raise_error(gl::INVALID_OPERATION);
-                    return;
-                }
-            }
+        let Ok(linked_stages) = program.link_stages(&ctx.fogle.shader_pipeline.shaders) else {
+            ctx.fogle.raise_error(gl::INVALID_OPERATION);
+            return;
+        };
 
-            let _cache_key = hasher.finish();
+        for (stage_type, merged_essl) in linked_stages {
+            let gl_shader = bindings::gles().CreateShader(stage_type);
+            let essl_cstring = merged_essl.to_cstring();
+            let ptr = essl_cstring.as_ptr();
 
-            bindings::gles().LinkProgram(program);
+            bindings::gles().ShaderSource(gl_shader, 1, &ptr, std::ptr::null());
+            bindings::gles().CompileShader(gl_shader);
+            bindings::gles().AttachShader(program_id, gl_shader);
+        }        
 
-            let mut status = 0i32;
-            bindings::gles().GetProgramiv(program, gl::LINK_STATUS, &mut status);
-            if status != gl::TRUE as i32 {
-                log::error!("Program linking failed for program {}", program);
-                ctx.fogle.raise_error(gl::INVALID_OPERATION);
-                return;
-            }
+        bindings::gles().LinkProgram(program_id);
 
-            program_info.linked = true;
-        });
+        let mut linked: gl::types::GLint = 0;
+        bindings::gles().GetProgramiv(program_id, gl::LINK_STATUS, &mut linked);
+
+        program.linked = if linked == gl::TRUE as gl::types::GLint { true } else { false };
+
+        let mut length: gl::types::GLint = 0;
+        bindings::gles().GetProgramiv(program_id, gl::PROGRAM_BINARY_LENGTH, &mut length);
+
+        let mut format: gl::types::GLenum = 0;
+        let mut binary = vec![0u8; length as usize];
+        bindings::gles().GetProgramBinary(
+            program_id,
+            length,
+            std::ptr::null_mut(),
+            &mut format,
+            binary.as_mut_ptr() as *mut _,
+        );
+
+        if let Err(e) = cache::put_program(program_hash, &cache::ProgramCacheEntry {
+            format,
+            binary,
+            transpile_context: program.transpile_context.clone(),
+        }) {
+            log::warn!("progbin cache write failed: {e}");
+        }
     }
 }
 
@@ -155,17 +167,17 @@ register_hook! {
     ) => {
         match pname {
             gl::COMPILE_STATUS => {
-                core::shader::PIPELINE_STATE.with_borrow(|ps| {
-                    unsafe {
-                        *params = if ps.shaders.get(&shader).map_or(false, |s| !s.source.is_empty()) {
-                            gl::TRUE as gl::types::GLint
-                        } else {
-                            gl::FALSE as gl::types::GLint
-                        };
-                    }
-                });
+                let ctx = current_ctx!();
+                *params = if ctx.fogle.shader_pipeline.shaders
+                    .get(&shader)
+                    .map_or(false, |s| s.compiled)
+                {
+                    gl::TRUE as gl::types::GLint
+                } else {
+                    gl::FALSE as gl::types::GLint
+                };
             }
-            _ => unsafe { bindings::gles().GetShaderiv(shader, pname, params) }
+            _ => bindings::gles().GetShaderiv(shader, pname, params)
         }
     }
 }
@@ -178,17 +190,17 @@ register_hook! {
     ) => {
         match pname {
             gl::LINK_STATUS => {
-                core::shader::PIPELINE_STATE.with_borrow(|ps| {
-                    unsafe {
-                        *params = if ps.programs.get(&program).map_or(false, |p| p.linked) {
-                            gl::TRUE as gl::types::GLint
-                        } else {
-                            gl::FALSE as gl::types::GLint
-                        };
-                    }
-                });
+                let ctx = current_ctx!();
+                *params = if ctx.fogle.shader_pipeline.programs
+                    .get(&program)
+                    .map_or(false, |p| p.linked)
+                {
+                    gl::TRUE as gl::types::GLint
+                } else {
+                    gl::FALSE as gl::types::GLint
+                };
             }
-            _ => unsafe { bindings::gles().GetProgramiv(program, pname, params) }
+            _ => bindings::gles().GetProgramiv(program, pname, params)
         }
     }
 }
