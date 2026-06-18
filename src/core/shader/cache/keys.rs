@@ -2,12 +2,14 @@ use std::hash::Hasher;
 
 use gxhash::GxHasher;
 
-use crate::{core::{contexts::es::ESContext, shader::{Program, Shader}}, traits::gl::FromStageKey};
+use crate::{core::{ contexts::es::ESContext, shader::{Program, Shader, transpilation::TranspileContext}}, traits::gl::FromStageKey};
 
 pub fn spv_key(
     shader: &Shader
 ) ->u64 {
     let mut hasher = GxHasher::default();
+
+    hasher.write(&TranspileContext::VERSION.to_le_bytes());
 
     hasher.write(&shader.type_.to_le_bytes());
     hasher.write(shader.source.as_bytes());
@@ -21,10 +23,17 @@ pub fn program_key(
 ) -> u64 {
     let mut hasher = GxHasher::default();
 
-    hasher.write(&ctx.version.count_bytes().to_le_bytes());
-    hasher.write(ctx.version.to_bytes());
-    hasher.write(&ctx.renderer.count_bytes().to_le_bytes());
-    hasher.write(ctx.renderer.to_bytes());
+    let version_bytes = ctx.version.as_bytes();
+    hasher.write(&(version_bytes.len() as u64).to_le_bytes());
+    hasher.write(version_bytes);
+    
+    let renderer_bytes = ctx.renderer.as_bytes(); 
+    hasher.write(&(renderer_bytes.len() as u64).to_le_bytes());
+    hasher.write(renderer_bytes);
+
+    let shading_language_version_bytes = ctx.shading_language_version.as_bytes();
+    hasher.write(&(shading_language_version_bytes.len() as u64).to_le_bytes());
+    hasher.write(shading_language_version_bytes);
 
     for (i, stage) in program.stages.iter().enumerate() {
         hasher.write(&i.from_stage_key().unwrap().to_le_bytes());

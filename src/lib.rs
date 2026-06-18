@@ -80,6 +80,9 @@ fn ensure_requirements() {
     ctx.es.renderer = unsafe {
         bindings::gles().GetString(gles2::RENDERER).to_cstring()
     };
+    ctx.es.shading_language_version = unsafe {
+        bindings::gles().GetString(gles2::SHADING_LANGUAGE_VERSION).to_cstring()
+    };
     
 }
 

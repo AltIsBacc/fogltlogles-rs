@@ -18,6 +18,10 @@ pub struct TranspileContext {
     pub next_binding: u32,
 }
 
+impl TranspileContext {
+    pub const VERSION: u32 = 1;
+}
+
 pub static COMPILER: LazyLock<shaderc::Compiler> = LazyLock::new(
     || shaderc::Compiler::new().unwrap()
 );

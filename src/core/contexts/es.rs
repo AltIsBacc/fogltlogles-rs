@@ -15,5 +15,10 @@ pub struct ESContext {
         _code = "CString::new(\"Maldreno (TM) GPU (Couldn't load GL_RENDERER)\").unwrap()"
     )]
     pub renderer: CString,
+
+    #[default(
+        _code = "CString::new(\"0.0 Maldreno\").unwrap()"
+    )]
+    pub shading_language_version: CString,
 }
 

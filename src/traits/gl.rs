@@ -10,6 +10,14 @@ pub trait FromStageKey  {
     fn from_stage_key(&self) -> Option<gl::types::GLenum>;
 }
 
+pub trait AsGLBool {
+    fn as_gl_bool(&self) -> gl::types::GLboolean;
+}
+
+pub trait FromGLBool {
+    fn from_gl_bool(&self) -> Option<bool>;
+}
+
 impl AsStageKey for gl::types::GLenum {
     #[inline]
     fn as_stage_key(&self) -> Result<usize> {
@@ -36,6 +44,36 @@ impl FromStageKey for usize {
             4 => Some(gl::TESS_EVALUATION_SHADER),
             5 => Some(gl::COMPUTE_SHADER),
             _ => None,
+        }
+    }
+}
+
+impl AsGLBool for bool {
+    #[inline]
+    fn as_gl_bool(&self) -> gl::types::GLboolean {
+        match *self {
+            true => gl::TRUE,
+            false => gl::FALSE,
+        }
+    }
+}
+
+impl FromGLBool for gl::types::GLboolean {
+    fn from_gl_bool(&self) -> Option<bool> {
+        match *self {
+            gl::TRUE => Some(true),
+            gl::FALSE => Some(false),
+            _ => None
+        }
+    }
+}
+
+impl FromGLBool for gl::types::GLint {
+    fn from_gl_bool(&self) -> Option<bool> {
+        match *self as gl::types::GLboolean {
+            gl::TRUE => Some(true),
+            gl::FALSE => Some(false),
+            _ => None
         }
     }
 }
