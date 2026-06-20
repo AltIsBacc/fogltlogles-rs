@@ -22,6 +22,7 @@ register_hook! {
     ) => {
         log::info!("glGetIntegerv : pname={:#X}", pname);
 
+        let ctx = current_ctx!();
         match pname {
             gl::MAJOR_VERSION => *data = 3,
             gl::MINOR_VERSION => *data = 3,
@@ -29,7 +30,7 @@ register_hook! {
             gl::CONTEXT_FLAGS => *data = gl::CONTEXT_FLAG_FORWARD_COMPATIBLE_BIT as i32,
             gl::CONTEXT_PROFILE_MASK => *data = gl::CONTEXT_CORE_PROFILE_BIT as i32,
 
-            gl::NUM_EXTENSIONS => *data = 0,
+            gl::NUM_EXTENSIONS => *data = ctx.fogle.fake_extensions.len() as i32,
 
             _ => bindings::gles().GetIntegerv(pname, data),
         };
@@ -45,8 +46,10 @@ register_hook! {
             gl::VERSION => ctx.fogle.version.as_ptr(),
             gl::RENDERER => ctx.fogle.renderer.as_ptr(),
             gl::VENDOR => c"ThatMG393, AltIsBacc".as_ptr(),
-
             gl::SHADING_LANGUAGE_VERSION => c"4.00 FOGLTLOGLES".as_ptr(),
+
+            gl::EXTENSIONS => ctx.fogle.extensions_string.as_ptr(),
+
             _ => bindings::gles().GetString(pname),
         }
     },
@@ -64,6 +67,24 @@ register_hook! {
                 ctx.es.renderer.to_str().unwrap()
             )
         );
+    }
+}
+
+register_hook! {
+    fn glGetStringi(
+        pname: gl::types::GLenum,
+        index: gl::types::GLuint,
+    ) -> *const gl::types::GLubyte => {
+        let ctx = current_ctx!();
+        match pname {
+            gl::EXTENSIONS => {
+                ctx.fogle.fake_extensions
+                    .get_index(index as usize)
+                    .map(|s| s.as_ptr())
+                    .unwrap_or(std::ptr::null())
+            },
+            _ => bindings::gles().GetStringi(pname, index),
+        }
     }
 }
 

@@ -4,10 +4,12 @@ use gxhash::GxHasher;
 
 use crate::{core::{ contexts::es::ESContext, shader::{Program, Shader, transpilation::TranspileContext}}, traits::gl::FromStageKey};
 
+const HASH_SEED: i64 = 694206721;
+
 pub fn spv_key(
     shader: &Shader
 ) ->u64 {
-    let mut hasher = GxHasher::default();
+    let mut hasher = GxHasher::with_seed(HASH_SEED);
 
     hasher.write(&TranspileContext::VERSION.to_le_bytes());
 
@@ -21,7 +23,7 @@ pub fn program_key(
     ctx: &ESContext,
     program: &Program,
 ) -> u64 {
-    let mut hasher = GxHasher::default();
+    let mut hasher = GxHasher::with_seed(HASH_SEED);
 
     let version_bytes = ctx.version.as_bytes();
     hasher.write(&(version_bytes.len() as u64).to_le_bytes());

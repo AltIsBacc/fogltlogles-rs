@@ -31,6 +31,7 @@ serde_bytes = "0.11"
 lru = "0.18"
 postcard = { version = "1.1", features = ["use-std"] }
 getset = "0.1"
+indexmap = "2.14"
 
 shaderc = { version = "0.10", default-features = false, features = ["prefer-static-linking"] }
 spirv-cross2 = { version = "0.7", default-features = false, features = ["glsl"] }

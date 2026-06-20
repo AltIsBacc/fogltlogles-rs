@@ -11,6 +11,7 @@ pub trait ToShaderType {
 }
 
 impl FromShaderType for shaderc::ShaderKind {
+    #[inline]
     fn from_shader_type(shader_type: gl::types::GLenum) -> Result<Self> {
         match shader_type {
             gl::VERTEX_SHADER => Ok(shaderc::ShaderKind::Vertex),
@@ -25,6 +26,7 @@ impl FromShaderType for shaderc::ShaderKind {
 }
 
 impl ToShaderType for gl::types::GLenum {
+    #[inline]
     fn to_shader_type(&self) -> Result<shaderc::ShaderKind> {
         shaderc::ShaderKind::from_shader_type(*self)
     }

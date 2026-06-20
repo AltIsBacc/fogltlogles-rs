@@ -1,4 +1,6 @@
 use std::ffi::CString;
+
+use indexmap::IndexSet;
 use smart_default::SmartDefault;
 
 use crate::{bindings::frontend::gl, core::shader};
@@ -18,10 +20,23 @@ pub struct FogleContext {
     pub current_error: gl::types::GLbitfield,
 
     pub shader_pipeline: shader::PipelineState,
+
+    pub fake_extensions: IndexSet<String>,
+    pub extensions_string: CString,
 }
 
 impl FogleContext {
-   pub fn raise_error(&mut self, error: gl::types::GLenum) {
+    pub fn build_extensions_cache(&mut self) {
+        self.extensions_string = CString::new(
+            self.fake_extensions
+                .iter()
+                .cloned()
+                .collect::<Vec<_>>()
+                .join(" ")
+        ).unwrap_or_default();
+    }
+
+    pub fn raise_error(&mut self, error: gl::types::GLenum) {
         if let Some(bit) = Self::error_to_bit_index(error) {
             self.current_error |= 1 << bit;
         }

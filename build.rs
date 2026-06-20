@@ -9,7 +9,11 @@ fn main() {
     println!("cargo:rustc-link-lib=static=c++abi");
 
     BindingsBuilder::default()
-        .with_api(Api::Gles2, (3, 2), Profile::Core, GeneratorType::Struct)
+        .configure_api(Api::Gles2, (3, 2), Profile::Core, GeneratorType::Struct)
+            .with_extension("GL_EXT_blend_func_extended")
+            .with_extensions(["GL_EXT_multi_draw_arrays", "GL_EXT_draw_elements_base_vertex"])
+        .done()
+
         .with_api(Api::Egl, (1, 5), Profile::Core, GeneratorType::Struct)
         .with_api(Api::Gl, (4, 5), Profile::Compatibility, GeneratorType::Struct) 
         .write_to_separate_files("backend_{}.rs");

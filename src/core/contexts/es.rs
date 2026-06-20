@@ -1,5 +1,6 @@
 use std::ffi::CString;
 
+use indexmap::IndexSet;
 use smart_default::SmartDefault;
 
 #[derive(SmartDefault)]
@@ -20,5 +21,7 @@ pub struct ESContext {
         _code = "CString::new(\"0.0 Maldreno\").unwrap()"
     )]
     pub shading_language_version: CString,
+
+    pub real_extensions: IndexSet<String>,
 }
 

@@ -59,6 +59,7 @@ impl AsGLBool for bool {
 }
 
 impl FromGLBool for gl::types::GLboolean {
+    #[inline]
     fn from_gl_bool(&self) -> Option<bool> {
         match *self {
             gl::TRUE => Some(true),
@@ -69,6 +70,7 @@ impl FromGLBool for gl::types::GLboolean {
 }
 
 impl FromGLBool for gl::types::GLint {
+    #[inline]
     fn from_gl_bool(&self) -> Option<bool> {
         match *self as gl::types::GLboolean {
             gl::TRUE => Some(true),

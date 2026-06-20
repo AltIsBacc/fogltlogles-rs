@@ -13,9 +13,11 @@ pub(crate) mod core;
 pub(crate) mod api;
 pub(crate) mod ffpe;
 pub(crate) mod hooks;
+pub(crate) mod extensions;
 
 static INIT_ONCE: Once = Once::new();
-static LATE_INIT_ONCE: Once = Once::new();
+static LATE_INIT_EARLY_ONCE: Once = Once::new();
+static LATE_INIT_LATE_ONCE: Once = Once::new();
 
 pub fn init() {
     INIT_ONCE.call_once(|| {
@@ -43,15 +45,47 @@ pub fn init() {
 }
 
 pub fn late_init() {
-    LATE_INIT_ONCE.call_once(|| {
-        ensure_requirements();
+    let mut version_info = (Default::default(), (42, 42));
+    LATE_INIT_EARLY_ONCE.call_once(|| {
+        version_info = ensure_requirements();
+    });
 
+    let ctx = current_ctx!();
+    ctx.es.version_double = version_info.1;
+    ctx.es.version = version_info.0;
+    ctx.es.renderer = unsafe {
+        bindings::gles().GetString(gles2::RENDERER).to_cstring()
+    };
+    ctx.es.shading_language_version = unsafe {
+        bindings::gles().GetString(gles2::SHADING_LANGUAGE_VERSION).to_cstring()
+    };
+
+    let mut ext_count: gles2::types::GLint = 0;
+    unsafe { bindings::gles().GetIntegerv(gles2::NUM_EXTENSIONS, &mut ext_count) };
+
+    for i in 0..ext_count as gles2::types::GLuint {
+        let ext_ptr = unsafe { bindings::gles().GetStringi(gles2::EXTENSIONS, i) };
+        if !ext_ptr.is_null() {
+            if let Ok(s) = unsafe { ffi::CStr::from_ptr(ext_ptr) }.to_str() {
+                ctx.es.real_extensions.insert(s.to_owned());
+            }
+        }
+    }
+
+    log::info!("FOGLTLOGLES: found {} real extensions", ctx.es.real_extensions.len());
+
+    ctx.fogle.fake_extensions = ctx.es.real_extensions.clone();
+
+    LATE_INIT_LATE_ONCE.call_once(|| {
         api::INTERCEPT_INIT_REGISTRY.iter()
             .for_each(|f| unsafe { (f.init)() });
+
+        extensions::EXTENSION_REGISTRY.iter()
+            .for_each(|e| (e.register)());
     });
 }
 
-fn ensure_requirements() {
+fn ensure_requirements() -> (ffi::CString, (u8, u8)) {
     let version = unsafe {
         bindings::gles().GetString(gles2::VERSION).to_cstr()
     };
@@ -74,15 +108,6 @@ fn ensure_requirements() {
 
     log::info!("FOGLTLOGLES: context ready on ES {}.{}", major, minor);
 
-    let ctx = current_ctx!();
-    ctx.es.version_double = (major.try_into().unwrap(), minor.try_into().unwrap());
-    ctx.es.version = version.to_cstring();
-    ctx.es.renderer = unsafe {
-        bindings::gles().GetString(gles2::RENDERER).to_cstring()
-    };
-    ctx.es.shading_language_version = unsafe {
-        bindings::gles().GetString(gles2::SHADING_LANGUAGE_VERSION).to_cstring()
-    };
-    
+    (version.to_cstring(), (major.try_into().unwrap(), minor.try_into().unwrap()))
 }
 

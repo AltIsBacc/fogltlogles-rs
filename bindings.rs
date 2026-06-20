@@ -1,3 +1,4 @@
+
 use std::{env, fs::File, io::Write, path::{Path, PathBuf}};
 use gl_generator::{Api, Fallbacks, GlobalGenerator, StructGenerator, StaticGenerator, Profile, Registry};
 
@@ -15,11 +16,41 @@ pub struct ApiConfig {
     pub version: (u8, u8),
     pub profile: Profile,
     pub generator: GeneratorType,
+    pub extensions: Vec<String>,
 }
 
 pub struct BindingsBuilder {
     out_dir: PathBuf,
     apis: Vec<ApiConfig>,
+}
+
+/// Temporary context for adding extensions to a specific API configuration
+pub struct ApiContext {
+    builder: BindingsBuilder,
+    config: ApiConfig,
+}
+
+impl ApiContext {
+    /// Adds a single extension to this specific API configuration
+    pub fn with_extension<S: Into<String>>(mut self, extension: S) -> Self {
+        self.config.extensions.push(extension.into());
+        self
+    }
+
+    /// Adds multiple extensions to this specific API configuration
+    pub fn with_extensions<S, I>(mut self, extensions: I) -> Self 
+    where
+        S: Into<String>,
+        I: IntoIterator<Item = S>,
+    {
+        self.config.extensions.extend(extensions.into_iter().map(|s| s.into()));
+        self
+    }
+
+    pub fn done(mut self) -> BindingsBuilder {
+        self.builder.apis.push(self.config);
+        self.builder
+    }
 }
 
 impl Default for BindingsBuilder {
@@ -40,7 +71,7 @@ impl BindingsBuilder {
         }
     }
 
-    /// Appends an API with a configurable generator type
+    /// Appends an API directly without entering a sub-context
     pub fn with_api(
         mut self, 
         api: Api, 
@@ -53,8 +84,29 @@ impl BindingsBuilder {
             version,
             profile,
             generator,
+            extensions: Vec::new(),
         });
         self
+    }
+
+    /// Enters a separate configuration state
+    pub fn configure_api(
+        self, 
+        api: Api, 
+        version: (u8, u8), 
+        profile: Profile, 
+        generator: GeneratorType
+    ) -> ApiContext {
+        ApiContext {
+            builder: self,
+            config: ApiConfig {
+                api,
+                version,
+                profile,
+                generator,
+                extensions: Vec::new(),
+            },
+        }
     }
 
     pub fn write_to_single_file(self, filename: &str) {
@@ -80,7 +132,13 @@ impl BindingsBuilder {
     }
 
     fn write_api_bindings(config: &ApiConfig, file: &mut File) {
-        let registry = Registry::new(config.api, config.version, config.profile, Fallbacks::All, []);
+        let registry = Registry::new(
+            config.api, 
+            config.version, 
+            config.profile, 
+            Fallbacks::All, 
+            config.extensions.iter().map(|s| s.as_str()).collect::<Vec<&str>>()
+        );
 
         match config.generator {
             GeneratorType::Global => registry.write_bindings(GlobalGenerator, file),
